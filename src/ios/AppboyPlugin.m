@@ -73,34 +73,57 @@
         withLaunchOptions:notification.userInfo
         withAppboyOptions:appboyLaunchOptions];
 
-  if (![self.disableAutomaticPushRegistration isEqualToString:@"YES"]) {
-    UIUserNotificationType notificationSettingTypes = (UIUserNotificationTypeBadge | UIUserNotificationTypeAlert | UIUserNotificationTypeSound);
-    if (floor(NSFoundationVersionNumber) > NSFoundationVersionNumber_iOS_9_x_Max) {
-      UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
-      // If the delegate hasn't been set yet, set it here in the plugin
-      if (center.delegate == nil) {
-        center.delegate = [UIApplication sharedApplication].delegate;
-      }
-      UNAuthorizationOptions options = UNAuthorizationOptionAlert | UNAuthorizationOptionSound | UNAuthorizationOptionBadge;
-      if (@available(iOS 12.0, *)) {
-        if (![self.disableUNAuthorizationOptionProvisional isEqualToString:@"YES"]) {
-          options = options | UNAuthorizationOptionProvisional;
-        }
-      }
-      [center requestAuthorizationWithOptions:options
-                            completionHandler:^(BOOL granted, NSError *_Nullable error) {
-                              [[Appboy sharedInstance] pushAuthorizationFromUserNotificationCenter:granted];
-                            }];
-      [[UIApplication sharedApplication] registerForRemoteNotifications];
-    } else if (floor(NSFoundationVersionNumber) > NSFoundationVersionNumber_iOS_7_1) {
-      UIUserNotificationSettings *settings = [UIUserNotificationSettings settingsForTypes:notificationSettingTypes categories:nil];
-      [[UIApplication sharedApplication] registerForRemoteNotifications];
-      [[UIApplication sharedApplication] registerUserNotificationSettings:settings];
+
+    NSLog(@"Appboy -> DidFinishLaunchingWithOptions");
+
+
+    // Register for remote notifications. This shows a permission dialog on first run, to
+    // show the dialog at a more appropriate time move this registration accordingly.
+    if (floor(NSFoundationVersionNumber) <= NSFoundationVersionNumber_iOS_7_1) {
+        // iOS 7.1 or earlier. Disable the deprecation warnings.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        UIRemoteNotificationType allNotificationTypes =
+        (UIRemoteNotificationTypeSound |
+         UIRemoteNotificationTypeAlert |
+         UIRemoteNotificationTypeBadge);
+
+#pragma clang diagnostic pop
     } else {
-      [[UIApplication sharedApplication] registerForRemoteNotificationTypes: notificationSettingTypes];
+        // iOS 8 or later
+        // [START register_for_notifications]
+        if (floor(NSFoundationVersionNumber) <= NSFoundationVersionNumber_iOS_9_x_Max) {
+            UIUserNotificationType allNotificationTypes =
+            (UIUserNotificationTypeSound | UIUserNotificationTypeAlert | UIUserNotificationTypeBadge);
+            UIUserNotificationSettings *settings =
+            [UIUserNotificationSettings settingsForTypes:allNotificationTypes categories:nil];
+            [[UIApplication sharedApplication] registerUserNotificationSettings:settings];
+        } else {
+            // iOS 10 or later
+#if defined(__IPHONE_10_0) && __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_10_0
+            UNAuthorizationOptions authOptions =
+            UNAuthorizationOptionAlert
+            | UNAuthorizationOptionSound
+            | UNAuthorizationOptionBadge;
+            [[UNUserNotificationCenter currentNotificationCenter] requestAuthorizationWithOptions:authOptions completionHandler:^(BOOL granted, NSError * _Nullable error) {
+
+                [[Appboy sharedInstance] pushAuthorizationFromUserNotificationCenter:granted];
+
+
+            }];
+
+            // For iOS 10 display notification (sent via APNS)
+            [UNUserNotificationCenter currentNotificationCenter].delegate = self;
+            // For iOS 10 data message (sent via FCM)
+#endif
+        }
+
+        [[UIApplication sharedApplication] registerForRemoteNotifications];
+        // [END register_for_notifications]
     }
-  }
+
 }
+
 
 /*-------Appboy.h-------*/
 - (void)changeUser:(CDVInvokedUrlCommand *)command {
